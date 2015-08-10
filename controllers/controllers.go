@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
-	"github.com/oncourse/oncourse/models"
+	"github.com/unrealities/oncourseco/models"
 	"google.golang.org/appengine"
 )
 

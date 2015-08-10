@@ -1,6 +1,6 @@
 package services
 
-import "github.com/oncourse/oncourse/models"
+import "github.com/unrealities/oncourseco/models"
 
 func Data(a models.Info) string {
 	info := Info()
