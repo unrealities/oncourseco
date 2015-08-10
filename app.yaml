@@ -1,5 +1,5 @@
 application: oncourseco
-version: 0-0-1
+version: 0-0-2
 runtime: go
 api_version: go1
 automatic_scaling:
@@ -11,3 +11,7 @@ handlers:
 
 - url: /data
   script: _go_app
+
+- url: /SetOAuthCredentials
+  script: _go_app
+  login: admin
