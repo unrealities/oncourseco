@@ -11,14 +11,14 @@ func init() {
 	http.Handle("/", r)
 }
 
-func data(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func Data(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	w.Write([]byte("winning"))
 }
 
 func routes() http.Handler {
 	router := httprouter.New()
 
-	router.GET("/data", data)
+	router.GET("/data", Data)
 
 	return router
 }
