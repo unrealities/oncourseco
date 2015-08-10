@@ -1,0 +1,10 @@
+application: oncourseco
+version: 0-0-1
+runtime: go
+api_version: go1
+automatic_scaling:
+  min_pending_latency: 100ms
+
+handlers:
+- url: /
+  script: _go_app
