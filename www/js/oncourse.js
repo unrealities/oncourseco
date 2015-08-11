@@ -1,9 +1,5 @@
-var oncourseApp = angular.module('oncourse');
+var oncourseApp = angular.module('oncourseApp', []);
 
-oncourseApp.controller('oncourseCtrl', ['$scope', '$http', '$filter', '$interval',
-  function($scope, $http, $filter, $interval) {
-    $http.get('/data').success(function(data) {
-      $scope.data = data;
-    });
-  }
-]);
+oncourseApp.controller('oncourseController', ['$scope', function($scope) {
+  $scope.stats = "profit";
+}]);
