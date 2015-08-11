@@ -9,7 +9,13 @@ handlers:
 - url: /
   script: _go_app
 
-- url: /data
+- url: /connect
+  script: _go_app
+
+- url: /disconnect
+  script: _go_app
+
+- url: /people
   script: _go_app
 
 - url: /SetOAuthCredentials
