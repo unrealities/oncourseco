@@ -3,18 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"net/http"
-	"net/url"
 	"os"
-	"os/user"
-	"path/filepath"
+	"strings"
 	"time"
 
-	"golang.org/x/net/context"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 	"google.golang.org/api/calendar/v3"
 )
 
@@ -22,6 +14,17 @@ import (
 type Employee struct {
 	Email      string `json:"email"`
 	Department string `json:"department"`
+}
+
+type Team struct {
+	Name string `json:"name"`
+	Id   string `json:"id"`
+}
+
+type TeamCategory struct {
+	Id    int     `json:"team_category_id"`
+	Name  string  `json:"team_category_name"`
+	Teams []*Team `json:"teams"`
 }
 
 func dumpStats(events *calendar.Events) (err error) {
@@ -36,23 +39,49 @@ func dumpStats(events *calendar.Events) (err error) {
 	//	return err
 	//}
 	//fmt.Printf("%s\n", resp)
+	teamsFile, err := os.Open("teams.json")
+	if err != nil {
+		return
+	}
+	jsonParser := json.NewDecoder(teamsFile)
+	teams := []TeamCategory{}
+	err = jsonParser.Decode(&teams)
+	if err != nil {
+		return
+	}
+	var departmentNames = make(map[string]string)
+	for _, category := range teams {
+		fmt.Printf("category %s (%d)\n", category.Name, category.Id)
+		for _, team := range category.Teams {
+			fmt.Printf("team %s (%d)\n", team.Name, team.Id)
+			_, ok := departmentNames[team.Id]
+			if ok {
+				fmt.Printf("DUPLICATE TEAM IDS")
+				return
+			}
+			departmentNames[team.Id] = team.Name
+		}
+	}
+
 	employeesFile, err := os.Open("employees.json")
 	if err != nil {
 		return
 	}
 	employees := []Employee{}
-	jsonParser := json.NewDecoder(employeesFile)
+	jsonParser = json.NewDecoder(employeesFile)
 	err = jsonParser.Decode(&employees)
 	if err != nil {
 		return
 	}
+
 	var departments = make(map[string]string)
 	for _, employee := range employees {
-		departments[employee.Email] = employee.Department
+		department := departmentNames[employee.Department]
+		departments[employee.Email] = department
 	}
 
 	var colors = make(map[string]int)
-	var department_count = make(map[string]int)
+	var departmentCount = make(map[string]int)
 	var times = make(map[int64]int)
 	fmt.Println("Upcoming events:")
 	if len(events.Items) > 0 {
@@ -88,7 +117,14 @@ func dumpStats(events *calendar.Events) (err error) {
 			for _, attendee := range i.Attendees {
 				department, ok := departments[attendee.Email]
 				if ok {
-					department_count[department] += 1
+					departmentCount[department] += 1
+				} else {
+					if strings.Contains(strings.ToLower(attendee.Email), "sendgrid") {
+						departmentCount["Sendgrid Other"] += 1
+					} else {
+						departmentCount["External"] += 1
+					}
+
 				}
 			}
 		}
@@ -109,10 +145,13 @@ func dumpStats(events *calendar.Events) (err error) {
 	// count departments
 	total = 0
 	fmt.Printf("DEPARTMENTS\n")
-	for _, count := range department_count {
+	for _, count := range departmentCount {
 		total += count
 	}
-	for dpt, count := range department_count {
+	for dpt, count := range departmentCount {
+		if dpt == "" {
+			dpt = "Unknown"
+		}
 		fmt.Printf("'%s' %f%%\n", dpt, 100.0*(float32(count)/float32(total)))
 	}
 
