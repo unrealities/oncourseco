@@ -1,5 +1,5 @@
 application: oncourseco
-version: 0-0-2
+version: 1-0-0
 runtime: go
 api_version: go1
 automatic_scaling:
