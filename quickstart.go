@@ -110,9 +110,12 @@ func main() {
 	}
 
 	//events, err := srv.Events.List("primary").ShowDeleted(false).SingleEvents(true).OrderBy("startTime").Do()
-	t := time.Now().Format(time.RFC3339)
+	now := time.Now()
+	startDate := now //.AddDate(0, -1, 0)
+	endDate := now.AddDate(0, 1, 0)
+	fmt.Printf("Reading dates from %s to %s", startDate, now)
 	events, err := srv.Events.List("primary").ShowDeleted(false).
-		SingleEvents(true).TimeMin(t).MaxResults(5000).OrderBy("startTime").Do()
+		SingleEvents(true).TimeMin(startDate.Format(time.RFC3339)).TimeMax(endDate.Format(time.RFC3339)).OrderBy("startTime").Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve next ten of the user's events. %v", err)
 	}
@@ -132,9 +135,10 @@ func main() {
 		fmt.Printf("No upcoming events found.\n")
 	}
 	var stats Stats
-	stats, err = dumpStats(events)
+	stats, err = dumpStats(events, endDate)
 	if err != nil {
 		log.Fatalf("Could not dump stats. %v", err)
 	}
-	fmt.Println(stats)
+	js, _ := json.Marshal(stats)
+	fmt.Printf(string(js))
 }
