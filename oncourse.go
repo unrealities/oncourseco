@@ -27,13 +27,17 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
-	"google.golang.org/api/calendar/v3"
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/urlfetch"
+	"github.com/julienschmidt/httprouter"
+	"github.com/unrealities/oncourseco/routers"
+	"google.golang.org/api/plus/v1"
+	newappengine "google.golang.org/appengine"
+	newurlfetch "google.golang.org/appengine/urlfetch"
 
 	"github.com/gorilla/sessions"
+	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -42,7 +46,7 @@ import (
 const (
 	clientID        = "168733870597-e3mnjp35dqn1a5dm48hl3qq4pvc9kkch.apps.googleusercontent.com"
 	clientSecret    = "Sx7qZovoy96yirQnkeu8yCTJ"
-	applicationName = "Google+ Go Quickstart"
+	applicationName = "oncourseco"
 )
 
 // config is the configuration specification supplied to the OAuth package.
@@ -50,7 +54,7 @@ var config = &oauth2.Config{
 	ClientID:     clientID,
 	ClientSecret: clientSecret,
 	// Scope determines which API calls you are authorized to make
-	Scopes:   []string{"https://www.googleapis.com/auth/plus.login", "https://www.googleapis.com/auth/calendar"},
+	Scopes:   []string{"https://www.googleapis.com/auth/plus.login"},
 	Endpoint: google.Endpoint,
 	// Use "postmessage" for the code-flow for server side apps
 	RedirectURL: "postmessage",
@@ -78,13 +82,13 @@ type ClaimSet struct {
 // exchange takes an authentication code and exchanges it with the OAuth
 // endpoint for a Google API bearer token and a Google+ ID
 func exchange(code string, r *http.Request) (accessToken string, idToken string, err error) {
-	c := appengine.NewContext(r)
-	tok, err := config.Exchange(c, code)
+	var ctx context.Context = newappengine.NewContext(r)
+	tok, err := config.Exchange(ctx, code)
 	if err != nil {
 		return "", "", fmt.Errorf("Error while exchanging code: %v", err)
 	}
 	// TODO: return ID token in second parameter from updated oauth2 interface
-	return tok.AccessToken, "bacon", nil
+	return tok.AccessToken, tok.Extra("id_token").(string), nil
 }
 
 // decodeIdToken takes an ID Token and decodes it to fetch the Google+ ID within
@@ -220,9 +224,7 @@ func disconnect(w http.ResponseWriter, r *http.Request) *appError {
 
 	// Execute HTTP GET request to revoke current token
 	url := "https://accounts.google.com/o/oauth2/revoke?token=" + token.(string)
-	c := appengine.NewContext(r)
-	client := urlfetch.Client(c)
-	resp, err := client.Get(url)
+	resp, err := http.Get(url)
 	if err != nil {
 		m := "Failed to revoke token for a given user"
 		return &appError{errors.New(m), m, 400}
@@ -252,17 +254,24 @@ func people(w http.ResponseWriter, r *http.Request) *appError {
 	// Create a new authorized API client
 	tok := new(oauth2.Token)
 	tok.AccessToken = token.(string)
-	c := appengine.NewContext(r)
-	client := oauth2.NewClient(c, oauth2.StaticTokenSource(tok))
-	service, err := calendar.New(client)
+	var c appengine.Context = appengine.NewContext(r)
+	c.Infof("Logging a message with the old package")
+
+	var ctx context.Context = newappengine.NewContext(r)
+	client := &http.Client{
+		Transport: &oauth2.Transport{
+			Source: google.AppEngineTokenSource(ctx, "scope"),
+			Base:   &newurlfetch.Transport{Context: ctx},
+		},
+	}
+	service, err := plus.New(client)
 	if err != nil {
 		return &appError{err, "Create Plus Client", 500}
 	}
 
-	events, err := service.Events.List("primary").ShowDeleted(false).SingleEvents(true).OrderBy("startTime").Do()
-	if err != nil {
-		log.Fatalf("Unable to retrieve next ten of the user's events. %v", err)
-	}
+	// Get a list of people that this user has shared with this app
+	people := service.People.List("me", "visible")
+	peopleFeed, err := people.Do()
 	if err != nil {
 		m := "Failed to refresh access token"
 		if err.Error() == "AccessTokenRefreshError" {
@@ -271,11 +280,10 @@ func people(w http.ResponseWriter, r *http.Request) *appError {
 		return &appError{err, m, 500}
 	}
 	w.Header().Set("Content-type", "application/json")
-	js, err := json.Marshal(events)
+	err = json.NewEncoder(w).Encode(&peopleFeed)
 	if err != nil {
 		return &appError{err, "Convert PeopleFeed to JSON", 500}
 	}
-	w.Write(js)
 	return nil
 }
 
@@ -314,16 +322,67 @@ func base64Decode(s string) ([]byte, error) {
 	return base64.URLEncoding.DecodeString(s)
 }
 
+type Stats struct {
+	Name        string      `json:"name"`
+	Departments Departments `json:"departments"`
+	Wasted      Wasted      `json:"wasted"`
+}
+
+type Wasted struct {
+	TwentyEightDays float64 `json:"twentyeight"`
+	SevenDays       float64 `json:"seven"`
+}
+
+type Departments struct {
+	HR          float64 `json:"HR"`
+	Engineering float64 `json:"Engineering"`
+	Finance     float64 `json:"Finance"`
+}
+
+func stats(w http.ResponseWriter, r *http.Request) *appError {
+	stats := Stats{}
+
+	statsFile, err := os.Open("stats.json")
+	if err != nil {
+		fmt.Println("Error opening File: " + err.Error())
+	}
+
+	jsonParser := json.NewDecoder(statsFile)
+	if err = jsonParser.Decode(&stats); err != nil {
+		fmt.Println("Error parsing file: " + err.Error())
+	}
+
+	w.Header().Set("Content-type", "application/json")
+	err = json.NewEncoder(w).Encode(&stats)
+	if err != nil {
+		return &appError{err, "Convert PeopleFeed to JSON", 500}
+	}
+	return nil
+}
+
 func init() {
-	// Register a handler for our API calls
-	http.Handle("/connect", appHandler(connect))
-	http.Handle("/disconnect", appHandler(disconnect))
-	http.Handle("/people", appHandler(people))
+	// // Register a handler for our API calls
+	// http.Handle("/connect", appHandler(connect))
+	// http.Handle("/disconnect", appHandler(disconnect))
+	// http.Handle("/people", appHandler(people))
+	// http.Handle("/stats", appHandler(stats))
+	//
+	// // Serve the index.html page
+	// http.Handle("/", appHandler(index))
+	// http.HandleFunc("/www/", func(w http.ResponseWriter, r *http.Request) {
+	// 	http.ServeFile(w, r, r.URL.Path[1:])
+	// })
 
-	// Serve the index.html page
-	http.Handle("/", appHandler(index))
-	http.HandleFunc("/www/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, r.URL.Path[1:])
-	})
+	r := routers.Routes()
+	http.Handle("/", r)
+}
 
+func Routes() http.Handler {
+	router := httprouter.New()
+
+	router.GET("/stats", appHandler(stats))
+	router.NotFound = http.FileServer(http.Dir("www/")).ServeHTTP
+	router.ServeFiles("/www/*filepath", http.Dir("/tv"))
+
+	return router
 }
