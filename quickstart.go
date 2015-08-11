@@ -122,5 +122,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not dump stats. %v", err)
 	}
-	fmt.Println(stats)
+	js, _ := json.Marshal(stats)
+	fmt.Printf(string(js))
 }
