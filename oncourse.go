@@ -22,16 +22,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"text/template"
+
+	"appengine"
 
 	"github.com/julienschmidt/httprouter"
-	"github.com/unrealities/oncourseco/routers"
 	"google.golang.org/api/plus/v1"
 	newappengine "google.golang.org/appengine"
 	newurlfetch "google.golang.org/appengine/urlfetch"
@@ -373,7 +374,7 @@ func init() {
 	// 	http.ServeFile(w, r, r.URL.Path[1:])
 	// })
 
-	r := routers.Routes()
+	r := Routes()
 	http.Handle("/", r)
 }
 

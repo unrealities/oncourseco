@@ -126,18 +126,6 @@ func main() {
 					when = i.Start.Date
 				}
 				fmt.Printf("NEW ENTRY\n")
-				fmt.Printf("VISIBILITY:", i.Visibility, when)
-				fmt.Printf("SUMMARY:", i.Summary, when)
-				fmt.Printf("DESCRIPTION:", i.Description, when)
-				fmt.Printf("START:", i.Start, when)
-				fmt.Printf("END:", i.End, when)
-				for _, a := range i.Attendees {
-					fmt.Printf("ATTENDEE:", a.Email, when)
-				}
-				fmt.Printf("ORGANIZER:", i.Organizer, when)
-				fmt.Printf("RECURRING_EVENT_ID:", i.RecurringEventId, when)
-				fmt.Printf("LOCATION:", i.Location, when)
-				fmt.Printf("COLORID:", i.ColorId, when)
 				js, _ := json.Marshal(i)
 				fmt.Printf(string(js))
 			}
