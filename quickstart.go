@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"time"
 
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
@@ -108,42 +109,18 @@ func main() {
 		log.Fatalf("Unable to retrieve calendar Client %v", err)
 	}
 
-	events, err := srv.Events.List("primary").ShowDeleted(false).SingleEvents(true).OrderBy("startTime").Do()
+	//events, err := srv.Events.List("primary").ShowDeleted(false).SingleEvents(true).OrderBy("startTime").Do()
+	t := time.Now().Format(time.RFC3339)
+	events, err := srv.Events.List("primary").ShowDeleted(false).
+		SingleEvents(true).TimeMin(t).MaxResults(5000).OrderBy("startTime").Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve next ten of the user's events. %v", err)
 	}
 
-	fmt.Println("Upcoming events:")
-	if len(events.Items) > 0 {
-		for _, i := range events.Items {
-			if i.Visibility != "private" && i.Visibility != "confidential" {
-				var when string
-				// If the DateTime is an empty string the Event is an all-day Event.
-				// So only Date is available.
-				if i.Start.DateTime != "" {
-					when = i.Start.DateTime
-				} else {
-					when = i.Start.Date
-				}
-				fmt.Printf("NEW ENTRY\n")
-				fmt.Printf("VISIBILITY:", i.Visibility, when)
-				fmt.Printf("SUMMARY:", i.Summary, when)
-				fmt.Printf("DESCRIPTION:", i.Description, when)
-				fmt.Printf("START:", i.Start, when)
-				fmt.Printf("END:", i.End, when)
-				for _, a := range i.Attendees {
-					fmt.Printf("ATTENDEE:", a.Email, when)
-				}
-				fmt.Printf("ORGANIZER:", i.Organizer, when)
-				fmt.Printf("RECURRING_EVENT_ID:", i.RecurringEventId, when)
-				fmt.Printf("LOCATION:", i.Location, when)
-				fmt.Printf("COLORID:", i.ColorId, when)
-				js, _ := json.Marshal(i)
-				fmt.Printf(string(js))
-			}
-		}
-	} else {
-		fmt.Printf("No upcoming events found.\n")
+	var stats Stats
+	stats, err = dumpStats(events)
+	if err != nil {
+		log.Fatalf("Could not dump stats. %v", err)
 	}
-
+	fmt.Println(stats)
 }

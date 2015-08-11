@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,8 +28,21 @@ type TeamCategory struct {
 	Teams []*Team `json:"teams"`
 }
 
-func dumpStats(events *calendar.Events) (err error) {
+type Stats struct {
+	Name        string             `json:"name"`
+	Departments map[string]float64 `json:"departments"`
+	Wasted      Wasted             `json:"wasted"`
+}
+
+type Wasted struct {
+	TwentyEightDays float64 `json:"twentyeight"`
+	SevenDays       float64 `json:"seven"`
+}
+
+func dumpStats(events *calendar.Events) (stats Stats, err error) {
 	err = nil
+	stats = Stats{}
+	stats.Departments = make(map[string]float64)
 	//parkletKey := os.Getenv("PARKLET_KEY")
 	//req, err := http.NewRequest("GET", "https://app.parklet.co/api/v1/employees?page=1", nil)
 	//req.SetBasicAuth("nat.thompson@sendgrid.com", "HH9cZpv1Ehx3WbuHFSAB")
@@ -39,6 +53,8 @@ func dumpStats(events *calendar.Events) (err error) {
 	//	return err
 	//}
 	//fmt.Printf("%s\n", resp)
+
+	// parse JSON
 	teamsFile, err := os.Open("teams.json")
 	if err != nil {
 		return
@@ -51,9 +67,7 @@ func dumpStats(events *calendar.Events) (err error) {
 	}
 	var departmentNames = make(map[string]string)
 	for _, category := range teams {
-		fmt.Printf("category %s (%d)\n", category.Name, category.Id)
 		for _, team := range category.Teams {
-			fmt.Printf("team %s (%d)\n", team.Name, team.Id)
 			_, ok := departmentNames[team.Id]
 			if ok {
 				fmt.Printf("DUPLICATE TEAM IDS")
@@ -80,10 +94,11 @@ func dumpStats(events *calendar.Events) (err error) {
 		departments[employee.Email] = department
 	}
 
+	// Analyze Events
 	var colors = make(map[string]int)
 	var departmentCount = make(map[string]int)
-	var times = make(map[int64]int)
-	fmt.Println("Upcoming events:")
+	var times = make(map[int]int)
+	workDaySeconds := 8 * 3600
 	if len(events.Items) > 0 {
 		for _, i := range events.Items {
 			// If the DateTime is an empty string the Event is an all-day Event.
@@ -100,19 +115,17 @@ func dumpStats(events *calendar.Events) (err error) {
 			// for each calendar stay calculate the time spent in meetings
 			day := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0,
 				0, start.Location())
-			timestamp := day.Unix()
-			maxTime := 8 * 3600
+			timestamp := int(day.Unix())
 			if end.IsZero() {
-				times[timestamp] = maxTime
+				times[timestamp] = workDaySeconds
 			} else {
 				duration := int(end.Sub(start).Seconds())
 				times[timestamp] += duration
-				if times[timestamp] > maxTime {
-					times[timestamp] = maxTime
+				if times[timestamp] > workDaySeconds {
+					times[timestamp] = workDaySeconds
 				}
 			}
 			colors[i.ColorId] += 1
-			fmt.Printf("%s (%s - %s)\n", i.Summary, start, end)
 
 			for _, attendee := range i.Attendees {
 				department, ok := departments[attendee.Email]
@@ -130,8 +143,10 @@ func dumpStats(events *calendar.Events) (err error) {
 		}
 	} else {
 		fmt.Printf("No upcoming events found.\n")
+		return
 	}
 
+	// Generate Stats
 	var total int
 	// count colors
 	fmt.Printf("COLORS\n")
@@ -139,12 +154,11 @@ func dumpStats(events *calendar.Events) (err error) {
 		total += count
 	}
 	for color, count := range colors {
-		fmt.Printf("'%s' %f%%\n", color, 100.0*(float32(count)/float32(total)))
+		fmt.Printf("'%s' %f%%\n", color, (float32(count) / float32(total)))
 	}
 
 	// count departments
 	total = 0
-	fmt.Printf("DEPARTMENTS\n")
 	for _, count := range departmentCount {
 		total += count
 	}
@@ -152,14 +166,40 @@ func dumpStats(events *calendar.Events) (err error) {
 		if dpt == "" {
 			dpt = "Unknown"
 		}
-		fmt.Printf("'%s' %f%%\n", dpt, 100.0*(float32(count)/float32(total)))
+		stats.Departments[dpt] = (float64(count) / float64(total))
 	}
 
-	// show business
-	fmt.Printf("WASTED\n")
-	for date, seconds := range times {
-		fmt.Printf("on date %d, %d seconds in meetings\n", date, seconds)
+	// Time in meetings
+	timestamps := make([]int, 0, len(times))
+	for k := range times {
+		timestamps = append(timestamps, k)
+	}
+	sort.Ints(timestamps)
+	now := time.Now()
+	nowDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0,
+		0, now.Location())
+	nowTimestamp := int(nowDay.Unix())
+	oneWeekSeconds := 86400 * 7
+	oneWeekWorkSeconds := workDaySeconds * 5
+	fourWeekWorkSeconds := 4 * oneWeekWorkSeconds
+	oneWeekCutoff := nowTimestamp - oneWeekSeconds
+	fourWeekCutoff := nowTimestamp - (4 * oneWeekSeconds)
+	var oneWeekWasted int
+	var fourWeeksWasted int
+	for i := len(timestamps) - 1; i >= 0; i-- {
+		if timestamps[i] > nowTimestamp {
+			continue
+		}
+		if timestamps[i] > oneWeekCutoff {
+			oneWeekWasted += times[timestamps[i]]
+		}
+		if timestamps[i] > fourWeekCutoff {
+			fourWeeksWasted += times[timestamps[i]]
+		}
 	}
 
-	return err
+	stats.Wasted.SevenDays = (float64(oneWeekWasted) / float64(oneWeekWorkSeconds))
+	stats.Wasted.TwentyEightDays = (float64(fourWeeksWasted) / float64(fourWeekWorkSeconds))
+
+	return
 }
