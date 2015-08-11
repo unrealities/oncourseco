@@ -8,16 +8,16 @@
   <link href='http://fonts.googleapis.com/css?family=Roboto' rel='stylesheet' type='text/css'>
   <link href='http://fonts.googleapis.com/css?family=Advent+Pro' rel='stylesheet' type='text/css'>
   <link href='css/oncourse.css' rel='stylesheet' type='text/css'>
+  <link href='css/splash.css' rel='stylesheet' type='text/css'>
 </head>
 
 <body ng-controller='oncourseController'>
   <div class="title">
-    <div class="title-container" onclick="parentNode.remove(); document.getElementById('dashboard').style.display = 'block';">
+    <div class="title-container" onclick="location.href = '/stats.html';">
       <div class="company-name">oncourse</div>
       <img src="../img/signin_button.png"/>
     </div>
   </div>
-  <div id="dashboard">boom</div>
 </body>
 <script src="js/oncourse.js"></script>
 </html>
