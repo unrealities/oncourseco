@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"time"
 
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
@@ -108,7 +109,10 @@ func main() {
 		log.Fatalf("Unable to retrieve calendar Client %v", err)
 	}
 
-	events, err := srv.Events.List("primary").ShowDeleted(false).SingleEvents(true).OrderBy("startTime").Do()
+	//events, err := srv.Events.List("primary").ShowDeleted(false).SingleEvents(true).OrderBy("startTime").Do()
+	t := time.Now().Format(time.RFC3339)
+	events, err := srv.Events.List("primary").ShowDeleted(false).
+		SingleEvents(true).TimeMin(t).MaxResults(5000).OrderBy("startTime").Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve next ten of the user's events. %v", err)
 	}
@@ -133,5 +137,10 @@ func main() {
 	} else {
 		fmt.Printf("No upcoming events found.\n")
 	}
-
+	var stats Stats
+	stats, err = dumpStats(events)
+	if err != nil {
+		log.Fatalf("Could not dump stats. %v", err)
+	}
+	fmt.Println(stats)
 }
