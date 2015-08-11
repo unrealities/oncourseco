@@ -17,9 +17,11 @@ func Data(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 func routes() http.Handler {
 	router := httprouter.New()
+	router.HandleMethodNotAllowed = false
 
 	router.GET("/data", Data)
 	router.GET("/SetOAuthCredentials", SetOAuthCredentials)
+	router.ServeFiles("/www/*filepath", http.Dir("/"))
 
 	return router
 }

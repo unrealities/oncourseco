@@ -15,3 +15,7 @@ handlers:
 - url: /SetOAuthCredentials
   script: _go_app
   login: admin
+
+- url: /*
+  application_readable: true
+  static_dir: www
