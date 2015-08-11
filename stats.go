@@ -39,10 +39,12 @@ type Wasted struct {
 	SevenDays       float64 `json:"seven"`
 }
 
-func dumpStats(events *calendar.Events) (stats Stats, err error) {
+func dumpStats(events *calendar.Events, endDate time.Time) (stats Stats, err error) {
 	err = nil
 	stats = Stats{}
 	stats.Departments = make(map[string]float64)
+
+	owner := "tracy.roberts"
 	//parkletKey := os.Getenv("PARKLET_KEY")
 	//req, err := http.NewRequest("GET", "https://app.parklet.co/api/v1/employees?page=1", nil)
 	//req.SetBasicAuth("nat.thompson@sendgrid.com", "HH9cZpv1Ehx3WbuHFSAB")
@@ -112,14 +114,48 @@ func dumpStats(events *calendar.Events) (stats Stats, err error) {
 			} else {
 				start, _ = time.Parse("2000-01-22", i.Start.Date)
 			}
-			// for each calendar stay calculate the time spent in meetings
+			duration := int(end.Sub(start).Seconds())
+
+			newDepartments := make(map[string]int)
+			ownerMatch := false
+			weight := 0
+			for _, attendee := range i.Attendees {
+				if strings.Contains(attendee.Email, owner) {
+					totalAttendees := len(i.Attendees)
+					if totalAttendees <= 1 {
+						weight = 0
+					} else {
+						weight = duration / (len(i.Attendees) - 1)
+					}
+					ownerMatch = true
+				} else {
+					department, ok := departments[attendee.Email]
+					if ok {
+						newDepartments[department] += weight
+					} else {
+						if strings.Contains(strings.ToLower(attendee.Email), "sendgrid") {
+							newDepartments["Sendgrid Other"] += weight
+						} else {
+							newDepartments["External"] += weight
+						}
+
+					}
+				}
+			}
+			// skip meetings for which owner does not attend
+			if !ownerMatch {
+				continue
+			}
+			for department, count := range newDepartments {
+				departmentCount[department] += count
+			}
+			// for each calendar day calculate the time spent in meetings
 			day := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0,
 				0, start.Location())
 			timestamp := int(day.Unix())
 			if end.IsZero() {
 				times[timestamp] = workDaySeconds
 			} else {
-				duration := int(end.Sub(start).Seconds())
 				times[timestamp] += duration
 				if times[timestamp] > workDaySeconds {
 					times[timestamp] = workDaySeconds
@@ -127,19 +163,6 @@ func dumpStats(events *calendar.Events) (stats Stats, err error) {
 			}
 			colors[i.ColorId] += 1
 
-			for _, attendee := range i.Attendees {
-				department, ok := departments[attendee.Email]
-				if ok {
-					departmentCount[department] += 1
-				} else {
-					if strings.Contains(strings.ToLower(attendee.Email), "sendgrid") {
-						departmentCount["Sendgrid Other"] += 1
-					} else {
-						departmentCount["External"] += 1
-					}
-
-				}
-			}
 		}
 	} else {
 		fmt.Printf("No upcoming events found.\n")
@@ -159,14 +182,17 @@ func dumpStats(events *calendar.Events) (stats Stats, err error) {
 
 	// count departments
 	total = 0
-	for _, count := range departmentCount {
+	for dpt, count := range departmentCount {
+		if dpt == "" || dpt == "Sendgrid Other" {
+			continue
+		}
 		total += count
 	}
 	for dpt, count := range departmentCount {
-		if dpt == "" {
-			dpt = "Unknown"
+		if dpt == "" || dpt == "Sendgrid Other" {
+			continue
 		}
-		stats.Departments[dpt] = (float64(count) / float64(total))
+		stats.Departments[dpt] = 100.0 * (float64(count) / float64(total))
 	}
 
 	// Time in meetings
@@ -175,9 +201,8 @@ func dumpStats(events *calendar.Events) (stats Stats, err error) {
 		timestamps = append(timestamps, k)
 	}
 	sort.Ints(timestamps)
-	now := time.Now()
-	nowDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0,
-		0, now.Location())
+	nowDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0,
+		0, endDate.Location())
 	nowTimestamp := int(nowDay.Unix())
 	oneWeekSeconds := 86400 * 7
 	oneWeekWorkSeconds := workDaySeconds * 5
